@@ -131,7 +131,7 @@ def test_bind(
 
     assert bind(unit(Monad, value), f) == f(value)
     # method form
-    assert Monad.unit(value).bind(f) == f(value)
+    assert monad.unit(value).bind(f) == f(value)
 
     # right identity
 
