@@ -109,9 +109,11 @@ def test_map(
 
     f_after_g = lambda x: f(g(x))
 
-    assert map(Monad(integer), f_after_g) == map(map(Monad(integer), g), f)
+    m = monad.unit(integer)
+
+    assert map(m, f_after_g) == map(map(m, g), f)
     # method form
-    assert Monad(integer).map(f_after_g) == Monad(integer).map(g).map(f)
+    assert m.map(f_after_g) == m.map(g).map(f)
 
 
 @given(monad=monads(), value=infer, f=infer, g=infer)
@@ -149,7 +151,7 @@ def test_app(monad, f: RegularFunction, g: RegularFunction):
 
     determinize = functools.lru_cache(maxsize=None)
 
-    f, g = Monad(determinize(f)), Monad(determinize(g))
+    f, g = monad.unit(determinize(f)), monad.unit(determinize(g))
 
     # identity
 
