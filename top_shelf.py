@@ -92,6 +92,8 @@ def test_map(
 
     f = functools.lru_cache(maxsize=None)(f)
 
+    assert map(monad, identity) == monad
+    # method form
     assert monad.map(identity) == monad
 
     f = functools.partial(f, integer)
@@ -100,6 +102,8 @@ def test_map(
 
     f_after_g = lambda x: f(g(x))
 
+    assert map(Monad(integer), f_after_g) == map(map(Monad(integer), g), f)
+    # method form
     assert Monad(integer).map(f_after_g) == Monad(integer).map(g).map(f)
 
 
@@ -116,18 +120,20 @@ def test_bind(
 
     # left identity
 
+    assert bind(unit(Monad, value), f) == f(value)
+    # method form
     assert Monad.unit(value).bind(f) == f(value)
 
     # right identity
 
+    assert bind(monad, monad.unit) == monad
+    # method form
     assert monad.bind(monad.unit) == monad
 
     # associativity
 
     assert bind(bind(monad, f), g) == bind(monad, lambda x: bind(f(x), g))
-
     # method syntax
-
     assert monad.bind(f).bind(g) == monad.bind(lambda x: bind(f(x), g))
 
 
