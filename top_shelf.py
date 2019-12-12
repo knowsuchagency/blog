@@ -7,18 +7,16 @@ from typing import *
 import hypothesis.strategies as st
 from hypothesis import given, infer
 
-# here we simply use scalar to mean something that isn't a monad
-
 Scalar = Union[AnyStr, Number, bool]
 
 RegularFunction = Callable[[Scalar], Scalar]
 
 
-def identity(x: Any):
+def identity(x: Any) -> Any:
     return x
 
 
-def unit(M: Type["Monad"], value: Scalar):
+def unit(M: Type["Monad"], value: Scalar) -> "Monad":
     """
     AKA: return, pure, yield, point
     """
@@ -30,10 +28,19 @@ def map(monad: "Monad", function: RegularFunction) -> "Monad":
     return monad.unit(function(monad.value))
 
 
-def apply(monad: "Monad", lifted_function: "Monad") -> "Monad":
+def apply(lifted_function: "Monad", lifted_value: "Monad") -> "Monad":
     """AKA: ap, <*>"""
     lifted_function.value: RegularFunction
-    return map(monad, lifted_function.value)
+
+    # since python doesn't curry functions automatically,
+    # we have to do it ourselves in this case to obey the
+    # applicative laws
+
+    if callable(lifted_value.value):
+        g = lifted_value.value
+        lifted_value = lifted_value.unit(lambda f: g(f))
+
+    return map(lifted_value, lifted_function.value)
 
 
 def bind(monad: "Monad", function: Callable[[Scalar], "Monad"]) -> "Monad":
@@ -137,6 +144,26 @@ def test_bind(
     assert monad.bind(f).bind(g) == monad.bind(lambda x: bind(f(x), g))
 
 
+@given(monad=monads(), f=infer, g=infer)
+def test_app(monad, f: RegularFunction, g: RegularFunction):
+
+    determinize = functools.lru_cache(maxsize=None)
+
+    f, g = Monad(determinize(f)), Monad(determinize(g))
+
+    # identity
+
+    assert apply(monad.unit(identity), monad) == monad
+    # method syntax
+    assert monad.unit(identity).apply(monad) == monad
+
+    # composition
+
+    m = monad.unit(identity)
+
+    apply(apply(apply(monad.unit(compose), m), f), g) == apply(m, apply(f, g))
+
+
 def _modify(function: RegularFunction):
     """Wrap function in a monad, make it deterministic, and avoid NaN since we can't check for equality with it."""
 
@@ -156,9 +183,24 @@ def _modify(function: RegularFunction):
     return f
 
 
+def compose(f: RegularFunction):
+    """
+    Compose two functions together in curried form.
+    """
+
+    def i(g: RegularFunction):
+        def j(x: Scalar):
+            return f(g(x))
+
+        return j
+
+    return i
+
+
 def test():
     test_map()
     test_bind()
+    test_app()
 
 
 if __name__ == "__main__":
