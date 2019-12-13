@@ -263,9 +263,9 @@ def _modify(function: RegularFunction, M: Type[Monad] = Identity):
 
         if isinstance(result.value, Complex):
             if math.isnan(result.value.imag) or math.isnan(result.value.real):
-                return pure(None)
+                return Identity(None)
         elif isinstance(result.value, Number) and math.isnan(result.value):
-            return pure(None)
+            return Identity(None)
 
         return result
 
