@@ -102,9 +102,11 @@ class Identity(Monad):
 @st.composite
 def monads(draw):
 
-    scalars = st.one_of(
-        st.integers(), st.floats(allow_nan=False), st.text(), st.booleans()
-    )
+    # scalars = st.one_of(
+    #     st.integers(), st.floats(allow_nan=False), st.text(), st.booleans()
+    # )
+
+    scalars = st.integers()
 
     unary_functions = st.functions(like=lambda x: x, returns=scalars)
 
@@ -239,7 +241,7 @@ def test_app(
     
     """
 
-    # assert m.apply(monad.unit(f)) == monad.unit(lambda x: f(x)).apply(f)
+    assert m.apply(monad.unit(f)) == monad.unit(lambda x: f(x)).apply(f)
 
     # composition
 
