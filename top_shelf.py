@@ -154,11 +154,9 @@ def test_map(
 
     f_after_g = lambda x: f(g(x))
 
-    m = unit(integer)
-
-    assert map(m, f_after_g) == map(map(m, g), f)
+    assert map(monad, f_after_g) == map(map(monad, g), f)
     # method form
-    assert m.map(f_after_g) == m.map(g).map(f)
+    assert monad.map(f_after_g) == monad.map(g).map(f)
 
 
 @settings(report_multiple_bugs=False)
@@ -230,19 +228,12 @@ def test_app(
         pure f <*> pure x = pure (f x)
     """
 
-    m = unit(integer)
+    assert apply(unit(f), monad) == unit(f(monad.value))
 
-    assert apply(unit(f), m) == unit(f(m.value))
-
-    assert unit(f).apply(m) == unit(f(m.value))
+    assert unit(f).apply(monad) == unit(f(monad.value))
 
     """
-    The third law is the interchange law. 
-    It’s a little more complicated, so don’t sweat it too much. 
-    It states that the order that we wrap things shouldn’t matter. 
-    One on side, we apply any applicative over a pure wrapped object. 
-    On the other side, first we wrap a function applying the object as an argument. 
-    Then we apply this to the first applicative. These should be the same.
+    interchange
 
         u <*> pure y = pure ($ y) <*> u
     
@@ -253,8 +244,8 @@ def test_app(
     y = integer
 
     assert apply(u, unit(y)) == apply(unit(lambda g: g(y)), u)
-
-    # assert m.apply(unit(f)) == unit(lambda x: f(x)).apply(f)
+    # method form
+    assert u.apply(unit(y)) == unit(lambda g: g(y)).apply(u)
 
     # composition
 
