@@ -81,15 +81,11 @@ def unit(
 
 def map(monad: Monad, function: RegularFunction) -> Monad:
 
-    if not callable(monad.value):
-
-        return monad.unit(function(monad.value))
-
-    else:
-
-        return either_function_application_or_composition(
-            monad.value, function
-        )
+    return (
+        monad.unit(function(monad.value))
+        if not callable(monad.value)
+        else function_application_or_composition(monad.value, function)
+    )
 
 
 def apply(lifted_function: Monad, lifted: Monad) -> Monad:
@@ -104,7 +100,7 @@ def bind(monad: Monad, function: Callable[[Scalar], Monad]) -> Monad:
     return (
         function(monad.value)
         if not callable(monad.value)
-        else either_function_application_or_composition(monad.value, function)
+        else function_application_or_composition(monad.value, function)
     )
 
 
@@ -286,7 +282,7 @@ def memoize(func):
     return lru_cache(maxsize=None)(func)
 
 
-def either_function_application_or_composition(
+def function_application_or_composition(
     f: RegularFunction, g: RegularFunction, m: Type[Monad] = Identity
 ):
 
