@@ -15,6 +15,8 @@ ScalarOrScalarFunction = Union[Scalar, ScalarToScalar]
 
 RegularFunction = Callable[[ScalarOrScalarFunction], ScalarOrScalarFunction]
 
+ScalarToMonad = Callable[[Scalar], "Monad"]
+
 
 class Monad(ABC):
     @classmethod
@@ -283,7 +285,9 @@ def memoize(func):
 
 
 def function_application_or_composition(
-    f: RegularFunction, g: RegularFunction, m: Type[Monad] = Identity
+    f: RegularFunction,
+    g: Union[RegularFunction, ScalarToMonad],
+    m: Type[Monad] = Identity,
 ):
 
     g_after_f = g(f)
