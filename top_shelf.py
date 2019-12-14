@@ -83,11 +83,7 @@ def unit(
 
 def map(monad: Monad, function: RegularFunction) -> Monad:
 
-    return (
-        monad.unit(function(monad.value))
-        if not callable(monad.value)
-        else function_application_or_composition(monad.value, function)
-    )
+    return monad.unit(function(monad.value))
 
 
 def apply(lifted_function: Monad, lifted: Monad) -> Monad:
@@ -102,7 +98,7 @@ def bind(monad: Monad, function: Callable[[Scalar], Monad]) -> Monad:
     return (
         function(monad.value)
         if not callable(monad.value)
-        else function_application_or_composition(monad.value, function)
+        else map(monad.unit(monad.value), function)
     )
 
 
@@ -188,9 +184,16 @@ def test_bind(
     assert monad.bind(f).bind(g) == monad.bind(lambda x: bind(f(x), g))
 
 
-@given(monad=monads(), integer=st.integers(), f=infer, g=infer)
+@settings(report_multiple_bugs=False)
+@given(
+    monad=monads(),
+    other_monad=monads(),
+    integer=st.integers(),
+    f=infer,
+    g=infer,
+)
 def test_app(
-    monad, integer, f: Callable[[int], int], g: Callable[[int, int], int]
+    monad, other_monad, integer, f: RegularFunction, g: RegularFunction
 ):
     """
     identity
@@ -212,7 +215,7 @@ def test_app(
 
     # f, g = monad.unit(determinize(f)), monad.unit(determinize(g))
 
-    f = memoize(f)
+    f, g = memoize(f), memoize(g)
 
     # identity
 
@@ -245,14 +248,23 @@ def test_app(
     # method form
     assert u.apply(unit(y)) == unit(lambda g: g(y)).apply(u)
 
-    # composition
+    """
+    The final applicative law mimics the second functor law. 
+    It is a composition law. 
+    It states that function composition holds 
+    across applications within the functor
 
-    # m = monad.unit(identity)
-    # m = monad
-    #
-    # left = apply(apply(apply(monad.unit(compose), m), f), g)
-    # right = apply(m, apply(f, g))
-    # assert left == right, f'{left} != {right} ; {left.value(1)}'
+        pure (.) <*> u <*> v <*> w = u <*> (v <*> w)
+    """
+    # v, w = monad, other_monad
+    # v, w = unit(f), unit(g)
+
+    # u = unit(lambda x: x + 1)
+    # v = unit(lambda x: x * 2)
+    # w = unit(lambda x: x + 3)
+    # left = unit(compose).apply(u).apply(v).apply(w)
+    # right = u.apply(v.apply(w))
+    # assert left == right, f"{left} != {right}"
 
 
 def _modify(function: RegularFunction):
@@ -284,29 +296,11 @@ def memoize(func):
     return lru_cache(maxsize=None)(func)
 
 
-def function_application_or_composition(
-    f: RegularFunction,
-    g: Union[RegularFunction, ScalarToMonad],
-    m: Type[Monad] = Identity,
-):
+def compose(f, g):
+    def f_after_g(*args, **kwargs):
+        return f(g(*args, **kwargs))
 
-    g_after_f = g(f)
-
-    try:
-
-        # function application
-
-        return m.unit(g_after_f)
-
-    except TypeError:
-
-        # composition
-
-        return m.unit(lambda x: f(g(x)))
-
-    except Exception as e:
-
-        raise e
+    return f_after_g
 
 
 def identity(x: Any) -> Any:
