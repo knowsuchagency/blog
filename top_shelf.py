@@ -9,11 +9,7 @@ from hypothesis import given, infer
 
 Scalar = Union[AnyStr, int, bool]
 
-ScalarToScalar = Callable[[Scalar], Scalar]
-
-RegularFunction = Callable[
-    Union[Scalar, ScalarToScalar], Union[Scalar, ScalarToScalar]
-]
+RegularFunction = Callable[[Scalar], Scalar]
 
 
 class Monad(ABC):
@@ -86,29 +82,6 @@ def map(monad: Monad, function: RegularFunction) -> Monad:
         return either_function_application_or_composition(
             monad.value, function
         )
-
-
-def either_function_application_or_composition(
-    f: RegularFunction, g: RegularFunction, m: Type[Monad] = Identity
-):
-
-    g_after_f = g(f)
-
-    try:
-
-        # function application
-
-        return m.unit(g_after_f)
-
-    except TypeError:
-
-        # composition
-
-        return m.unit(lambda x: f(g(x)))
-
-    except Exception as e:
-
-        raise e
 
 
 def apply(lifted_function: Monad, lifted: Monad) -> Monad:
@@ -312,6 +285,29 @@ def memoize(func):
         return func(*args, **kwargs)
 
     return inner
+
+
+def either_function_application_or_composition(
+    f: RegularFunction, g: RegularFunction, m: Type[Monad] = Identity
+):
+
+    g_after_f = g(f)
+
+    try:
+
+        # function application
+
+        return m.unit(g_after_f)
+
+    except TypeError:
+
+        # composition
+
+        return m.unit(lambda x: f(g(x)))
+
+    except Exception as e:
+
+        raise e
 
 
 def identity(x: Any) -> Any:
