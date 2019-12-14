@@ -62,7 +62,9 @@ class Identity(Monad):
         return self.value == other.value
 
 
-def unit(value: Scalar, M: Type[Monad] = Identity) -> Monad:
+def unit(
+    value: Union[Scalar, RegularFunction], M: Type[Monad] = Identity
+) -> Monad:
     """
     AKA: return, pure, yield, point
     """
@@ -70,12 +72,26 @@ def unit(value: Scalar, M: Type[Monad] = Identity) -> Monad:
 
 
 def map(monad: Monad, function: RegularFunction) -> Monad:
-    """AKA: fmap, lift, Select"""
-    return monad.unit(
-        function(monad.value)
-        if not callable(monad.value)
-        else lambda x: monad.value(function(x))
-    )
+
+    if not callable(monad.value):
+
+        return monad.unit(function(monad.value))
+
+    try:
+
+        # function application
+
+        return monad.unit(function(monad.value))
+
+    except TypeError:
+
+        # composition
+
+        return monad.unit(lambda x: monad.value(function(x)))
+
+    except Exception as e:
+
+        raise e
 
 
 def apply(lifted_function: Monad, lifted: Monad) -> Monad:
@@ -229,7 +245,13 @@ def test_app(
     
     """
 
-    # assert m.apply(monad.unit(f)) == monad.unit(lambda x: f(x)).apply(f)
+    u = unit(f)
+
+    y = integer
+
+    assert apply(u, unit(y)) == apply(unit(lambda g: g(y)), u)
+
+    # assert m.apply(unit(f)) == unit(lambda x: f(x)).apply(f)
 
     # composition
 
