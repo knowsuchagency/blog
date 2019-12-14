@@ -5,11 +5,15 @@ from functools import partial, lru_cache, wraps
 from typing import *
 
 import hypothesis.strategies as st
-from hypothesis import given, infer
+from hypothesis import given, infer, settings
 
 Scalar = Union[AnyStr, int, bool]
 
-RegularFunction = Callable[[Scalar], Scalar]
+ScalarToScalar = Callable[[Scalar], Scalar]
+
+ScalarOrScalarFunction = Union[Scalar, ScalarToScalar]
+
+RegularFunction = Callable[[ScalarOrScalarFunction], ScalarOrScalarFunction]
 
 
 class Monad(ABC):
@@ -54,12 +58,16 @@ class Identity(Monad):
 
     def __eq__(self, other: "Monad"):
 
-        if callable(self.value) and callable(other.value):
+        if self.value == other.value:
+            return True
+        elif self.value is other.value:
+            return True
+        elif callable(self.value) and callable(other.value):
             # we assume both functions accept integers for simplicity's sake
             i = random.randrange(0, 100)
             return self.value(i) == other.value(i)
-
-        return self.value == other.value
+        else:
+            return False
 
 
 def unit(
@@ -93,7 +101,11 @@ def apply(lifted_function: Monad, lifted: Monad) -> Monad:
 
 def bind(monad: Monad, function: Callable[[Scalar], Monad]) -> Monad:
     """AKA: flatMap, andThen, collect, SelectMany, >>=, =<<"""
-    return function(monad.value)
+    return (
+        function(monad.value)
+        if not callable(monad.value)
+        else either_function_application_or_composition(monad.value, function)
+    )
 
 
 # ---- tests ---- #
@@ -149,6 +161,7 @@ def test_map(
     assert m.map(f_after_g) == m.map(g).map(f)
 
 
+@settings(report_multiple_bugs=False)
 @given(monad=monads(), value=infer, f=infer, g=infer)
 def test_bind(
     monad: Monad, value: Scalar, f: RegularFunction, g: RegularFunction
