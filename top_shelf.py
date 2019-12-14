@@ -9,7 +9,11 @@ from hypothesis import given, infer
 
 Scalar = Union[AnyStr, int, bool]
 
-RegularFunction = Callable[[Scalar], Scalar]
+ScalarToScalar = Callable[[Scalar], Scalar]
+
+RegularFunction = Callable[
+    Union[Scalar, ScalarToScalar], Union[Scalar, ScalarToScalar]
+]
 
 
 class Monad(ABC):
@@ -77,17 +81,30 @@ def map(monad: Monad, function: RegularFunction) -> Monad:
 
         return monad.unit(function(monad.value))
 
+    else:
+
+        return either_function_application_or_composition(
+            monad.value, function
+        )
+
+
+def either_function_application_or_composition(
+    f: RegularFunction, g: RegularFunction, m: Type[Monad] = Identity
+):
+
+    g_after_f = g(f)
+
     try:
 
         # function application
 
-        return monad.unit(function(monad.value))
+        return m.unit(g_after_f)
 
     except TypeError:
 
         # composition
 
-        return monad.unit(lambda x: monad.value(function(x)))
+        return m.unit(lambda x: f(g(x)))
 
     except Exception as e:
 
