@@ -1,7 +1,7 @@
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import partial, lru_cache, wraps
+from functools import partial, lru_cache
 from typing import *
 
 import hypothesis.strategies as st
@@ -283,12 +283,7 @@ def compose(f: RegularFunction):
 
 
 def memoize(func):
-    @lru_cache(maxsize=None)
-    @wraps(func)
-    def inner(*args, **kwargs):
-        return func(*args, **kwargs)
-
-    return inner
+    return lru_cache(maxsize=None)(func)
 
 
 def either_function_application_or_composition(
