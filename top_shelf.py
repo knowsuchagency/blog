@@ -1,22 +1,17 @@
-import functools
 import math
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import partial, lru_cache, wraps
 from numbers import Number, Complex
 from typing import *
 
 import hypothesis.strategies as st
 from hypothesis import given, infer
 
-
 Scalar = Union[AnyStr, int, bool]
 
 RegularFunction = Callable[[Scalar], Scalar]
-
-
-def identity(x: Any) -> Any:
-    return x
 
 
 class Monad(ABC):
@@ -62,6 +57,7 @@ class Identity(Monad):
     def __eq__(self, other: "Monad"):
 
         if callable(self.value) and callable(other.value):
+            # we assume both functions accept integers for simplicity's sake
             i = random.randrange(0, 100)
             return self.value(i) == other.value(i)
 
@@ -112,11 +108,7 @@ def monads(draw):
 
     value = draw(st.one_of(scalars, unary_functions))
 
-    value = (
-        value
-        if not callable(value)
-        else functools.lru_cache(maxsize=None)(value)
-    )
+    value = value if not callable(value) else memoize(value)
 
     return Identity(value)
 
@@ -134,15 +126,15 @@ def test_map(
     """
     # make our generated function `f deterministic
 
-    f = functools.lru_cache(maxsize=None)(f)
+    f = memoize(f)
 
     assert map(monad, identity) == monad
     # method form
     assert monad.map(identity) == monad
 
-    f = functools.partial(f, integer)
+    f = partial(f, integer)
 
-    g = functools.partial(f, integer)
+    g = partial(f, integer)
 
     f_after_g = lambda x: f(g(x))
 
@@ -205,11 +197,9 @@ def test_app(
         pure (.) <*> u <*> v <*> w = u <*> (v <*> w)
     """
 
-    determinize = functools.lru_cache(maxsize=None)
-
     # f, g = monad.unit(determinize(f)), monad.unit(determinize(g))
 
-    f = determinize(f)
+    f = memoize(f)
 
     # identity
 
@@ -256,7 +246,7 @@ def test_app(
 def _modify(function: RegularFunction, M: Type[Monad] = Identity):
     """Wrap function in a monad, make it deterministic, and avoid NaN since we can't check for equality with it."""
 
-    @functools.lru_cache(maxsize=None)
+    @memoize
     def f(x):
 
         result = unit(function(x), M)
@@ -284,6 +274,19 @@ def compose(f: RegularFunction):
         return j
 
     return i
+
+
+def memoize(func):
+    @lru_cache(maxsize=None)
+    @wraps(func)
+    def inner(*args, **kwargs):
+        return func(*args, **kwargs)
+
+    return inner
+
+
+def identity(x: Any) -> Any:
+    return x
 
 
 def test():
