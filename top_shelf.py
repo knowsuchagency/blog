@@ -243,21 +243,13 @@ def test_app(
     # assert left == right, f'{left} != {right} ; {left.value(1)}'
 
 
-def _modify(function: RegularFunction, M: Type[Monad] = Identity):
-    """Wrap function in a monad, make it deterministic, and avoid NaN since we can't check for equality with it."""
+def _modify(function: RegularFunction):
+    """Memoize function and wrap it in a monad."""
 
     @memoize
     def f(x):
 
-        result = unit(function(x), M)
-
-        if isinstance(result.value, Complex):
-            if math.isnan(result.value.imag) or math.isnan(result.value.real):
-                return Identity(None)
-        elif isinstance(result.value, Number) and math.isnan(result.value):
-            return Identity(None)
-
-        return result
+        return unit(function(x))
 
     return f
 
