@@ -11,6 +11,8 @@ Scalar = Union[AnyStr, int, bool]
 
 ScalarToScalar = Callable[[Scalar], Scalar]
 
+IntToInt = Callable[[int], int]
+
 ScalarOrScalarFunction = Union[Scalar, ScalarToScalar]
 
 RegularFunction = Callable[[ScalarOrScalarFunction], ScalarOrScalarFunction]
@@ -83,7 +85,17 @@ def unit(
 
 def map(monad: Monad, function: RegularFunction) -> Monad:
 
-    return monad.unit(function(monad.value))
+    if not callable(monad.value):
+        return monad.unit(function(monad.value))
+    else:
+        return monad.unit(partial_or_composition(function, monad.value))
+
+
+def partial_or_composition(function, wrapped_function):
+    try:
+        return function(wrapped_function)
+    except TypeError:
+        return compose(wrapped_function, function)
 
 
 def apply(lifted_function: Monad, lifted: Monad) -> Monad:
@@ -136,21 +148,19 @@ def test_map(
     """
     # make our generated function `f deterministic
 
-    f = memoize(f)
+    f, g = memoize(f), memoize(g)
+
+    monad = unit(integer)
 
     assert map(monad, identity) == monad
     # method form
     assert monad.map(identity) == monad
 
-    f = partial(f, integer)
+    # composition
 
-    g = partial(f, integer)
-
-    f_after_g = lambda x: f(g(x))
-
-    assert map(monad, f_after_g) == map(map(monad, g), f)
+    assert map(unit(integer), compose(f, g)) == map(map(unit(integer), g), f)
     # method form
-    assert monad.map(f_after_g) == monad.map(g).map(f)
+    assert unit(integer).map(compose(f, g)) == unit(integer).map(g).map(f)
 
 
 @settings(report_multiple_bugs=False)
@@ -240,11 +250,13 @@ def test_app(
     
     """
 
-    u = unit(f)
+    u = unit(identity)  # todo: make this generic f
 
     y = integer
 
-    assert apply(u, unit(y)) == apply(unit(lambda g: g(y)), u)
+    l = apply(u, unit(y))
+    r = apply(unit(lambda g: g(y)), u)
+    assert l == r, f"{l} != {r}"
     # method form
     assert u.apply(unit(y)) == unit(lambda g: g(y)).apply(u)
 
