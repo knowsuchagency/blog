@@ -250,15 +250,11 @@ def test_app(
     
     """
 
-    u = unit(identity)  # todo: make this generic f
-
     y = integer
 
-    l = apply(u, unit(y))
-    r = apply(unit(lambda g: g(y)), u)
-    assert l == r, f"{l} != {r}"
+    assert apply(unit(f), unit(y)) == apply(unit(lambda g: g(y)), unit(f))
     # method form
-    assert u.apply(unit(y)) == unit(lambda g: g(y)).apply(u)
+    assert unit(f).apply(unit(y)) == unit(lambda g: g(y)).apply(unit(f))
 
     """
     The final applicative law mimics the second functor law. 
