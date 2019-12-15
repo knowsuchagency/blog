@@ -264,6 +264,7 @@ def test_app(
     # w = unit(lambda x: x + 3)
     # left = unit(compose).apply(u).apply(v).apply(w)
     # right = u.apply(v.apply(w))
+    # print(left.value, right.value)
     # assert left == right, f"{left} != {right}"
 
 
@@ -297,8 +298,8 @@ def memoize(func):
 
 
 def compose(f, g):
-    def f_after_g(*args, **kwargs):
-        return f(g(*args, **kwargs))
+    def f_after_g(x):
+        return f(g(x))
 
     return f_after_g
 
