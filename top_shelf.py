@@ -1,3 +1,14 @@
+"""
+A basic implementation of the identity monad in python.
+
+We use the hypothesis library to test that our monad obeys
+the monad, applicative, and functor laws.
+
+Credit to the following publications for definitions, knowledge, and inspiration:
+* https://mmhaskell.com/monads/laws
+* https://fsharpforfunandprofit.com/posts/elevated-world/
+* https://homepages.inf.ed.ac.uk/wadler/topics/monads.html
+"""
 import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -5,35 +16,58 @@ from functools import partial, lru_cache
 from typing import *
 
 import hypothesis.strategies as st
-from hypothesis import given, infer, settings
+from hypothesis import given, infer
 
-Scalar = Union[AnyStr, int, bool]
+Scalar = Union[AnyStr, int, bool, float]
 
-ScalarToScalar = Callable[[Scalar], Scalar]
+Function = Callable[[Scalar], Scalar]
 
-ScalarOrScalarFunction = Union[Scalar, ScalarToScalar]
+ScalarOrFunction = Union[Scalar, Function]
 
-RegularFunction = Callable[[ScalarOrScalarFunction], ScalarOrScalarFunction]
+UnaryFunction = Callable[[ScalarOrFunction], ScalarOrFunction]
+
+BinaryFunction = Callable[[ScalarOrFunction, ScalarOrFunction], ScalarOrFunction]
+
+UnaryOrBinaryFunction = Union[UnaryFunction, BinaryFunction]
 
 
 class Functor(ABC):
-    @classmethod
-    @abstractmethod
-    def unit(cls, value: Any) -> "Functor":
-        raise NotImplementedError
+    """
+    A functor is a thing with a map method that obeys a set of rules
+    as to how its map method will behave.
+    """
 
     @abstractmethod
-    def map(self, function: RegularFunction) -> "Functor":
+    def map(self, function: UnaryFunction) -> "Functor":
         raise NotImplementedError
 
 
 class Applicative(Functor):
+    """
+    An applicative is a functor that also has an apply method
+    that follows a set of rules.
+
+    It also has a unit method which will take a normal function or
+    value which it will "lift" into an applicative.
+
+    We can think sort of think of unit as just a glorified __init__
+    """
+
+    @classmethod
+    @abstractmethod
+    def unit(cls, value: Any) -> "Applicative":
+        raise NotImplementedError
+
     @abstractmethod
     def apply(self, lifted: "Applicative") -> "Applicative":
         raise NotImplementedError
 
 
 class Monad(Applicative):
+    """
+    A monad can be thought of as a container that obeys a set of laws.
+    """
+
     @abstractmethod
     def bind(self, function: Callable[[Scalar], "Monad"]) -> "Monad":
         raise NotImplementedError
@@ -42,16 +76,18 @@ class Monad(Applicative):
 @dataclass
 class Identity(Monad):
     """
-    The identity monad. It does nothing but wrap a value.
+    The identity monad.
+
+    The simplest of monads. It does nothing but wrap a value.
     """
 
-    value: Union[Scalar, Callable]
+    value: Any
 
     @classmethod
     def unit(cls, value: Any) -> "Identity":
         return unit(value, cls)
 
-    def map(self, function: RegularFunction) -> "Identity":
+    def map(self, function: UnaryFunction) -> "Identity":
         return map(self, function)
 
     def apply(self, lifted: "Identity") -> "Identity":
@@ -68,53 +104,63 @@ class Identity(Monad):
         elif self.value == other.value:
             return True
         elif callable(self.value) and callable(other.value):
+            # in the event we need to compare functions,
             # we assume both functions accept 0 for simplicity's sake
             return self.value(0) == other.value(0)
         else:
             return False
 
 
+# since monads are applicatives which are in-turn functors, from here on I will be defining functions
+# solely in terms of monads because my goal is to make this easy to read and understand
+
+
 def unit(
-    value: Union[Scalar, RegularFunction], M: Type[Monad] = Identity
+    value: Union[Scalar, UnaryFunction], M: Type[Monad] = Identity
 ) -> Monad:
     """
     AKA: return, pure, yield, point
+
+    The purpose of `unit` is to take a value, and wrap it in a monad.
     """
     return M(value) if not isinstance(value, M) else value
 
 
-def map(monad: Monad, function: RegularFunction) -> Monad:
+def map(monad: Monad, function: UnaryFunction) -> Monad:
     """
     Given a monad and a function, return a new monad where the function is applied to the monad's value.
 
     Note, it's normally bad practice to define control flow using exceptions, but due to Python's dynamic
     nature, we aren't guaranteed to have the necessary type information up-front in order to know whether
-    we need to simply apply the function to the wrapped value, partially apply two functions, or compose them.
-
-    Without type-annotated arguments, we're left to figure out the control flow ourselves through experimentation.
-
+    we need to simply apply the function to the lifted value, partially apply two functions, or compose them.
     """
 
     try:
         return monad.unit(function(monad.value))
     except TypeError:
-        return monad.unit(partial_or_composition(function, monad.value))
+        return monad.unit(partially_apply_or_compose(function, monad.value))
 
 
-def apply(lifted_function: Monad, lifted: Monad) -> Monad:
-    """AKA: ap, <*>"""
-    lifted_function.value: RegularFunction
+def apply(lifted_function: Monad, monad: Monad) -> Monad:
+    """
+    AKA: ap, <*>
 
-    return map(lifted, lifted_function.value)
+    `apply` takes a monad and a function lifted in a monad
+    and applies the lifted function to the value in the
+    other monad
+    """
+
+    return map(monad, lifted_function.value)
 
 
 def bind(monad: Monad, function: Callable[[Scalar], Monad]) -> Monad:
-    """AKA: flatMap, andThen, collect, SelectMany, >>=, =<<"""
-    return (
-        function(monad.value)
-        if not callable(monad.value)
-        else map(monad.unit(monad.value), function)
-    )
+    """
+    AKA: flatMap, andThen, collect, SelectMany, >>=, =<<
+
+    `bind` takes a monad and a function and applies that function to the monad.
+    The function expects a normal value and returns a monad
+    """
+    return map(monad, function)
 
 
 # ---- tests ---- #
@@ -122,6 +168,7 @@ def bind(monad: Monad, function: Callable[[Scalar], Monad]) -> Monad:
 
 @st.composite
 def monads(draw):
+    """Build us some monads, would you?"""
 
     scalars = st.integers()
 
@@ -135,62 +182,91 @@ def monads(draw):
 
 
 @given(integer=st.integers(), f=infer, g=infer)
-def test_map(
-    integer: int, f: Callable[[int, int], int], g: Callable[[int, int], int]
+def test_functor_laws(
+    integer: int, f: UnaryOrBinaryFunction, g: UnaryOrBinaryFunction
 ):
     """
     fmap id  ==  id
     fmap (f . g)  ==  fmap f . fmap g
     """
-    # make our generated function `f deterministic
+
+    # we will continue to see this pattern where we use our memoization function
+    # to make the functions hypothesis generates behave predictably
 
     f, g = memoize(f), memoize(g)
 
     monad = unit(integer)
 
+    # I'll put the regular function invocation form prior to the method
+    # invocation form of each law from now on.
+    # I find that sometimes one is more readable than the other
+
+    """
+    identity
+    
+        fmap id = id
+    """
+
     assert map(monad, identity) == monad
-    # method form
+
     assert monad.map(identity) == monad
 
-    # composition
+    """
+    composition
+    
+        fmap (g . f) = fmap g . fmap f
+    """
 
     assert map(unit(integer), compose(f, g)) == map(map(unit(integer), g), f)
-    # method form
+
     assert unit(integer).map(compose(f, g)) == unit(integer).map(g).map(f)
 
 
-@settings(report_multiple_bugs=False)
 @given(monad=monads(), value=infer, f=infer, g=infer)
-def test_bind(
-    monad: Monad, value: Scalar, f: RegularFunction, g: RegularFunction
+def test_monad_laws(
+    monad: Monad,
+    value: Scalar,
+    f: UnaryOrBinaryFunction,
+    g: UnaryOrBinaryFunction,
 ):
-    """
-    unit(a) >>= λx → f(x) ↔ f(a)
-    ma >>= λx → unit(x) ↔ ma
-    ma >>= λx → (f(x) >>= λy → g(y)) ↔ (ma >>= λx → f(x)) >>= λy → g(y)
+    r"""
+    return a >>= f = f
+    m >>= return = m
+    (m >>= f) >>= g = m >>= (\x -> f x >>= g)
     """
     f, g = _memoize_and_monadify(f), _memoize_and_monadify(g)
 
-    # left identity
+    """
+    left identity
+    
+        return a >>= f = f
+    """
 
     assert bind(unit(value), f) == f(value)
-    # method form
+
     assert unit(value).bind(f) == f(value)
 
-    # right identity
+    """
+    right identity
+    
+        m >>= return = m
+    """
 
     assert bind(monad, unit) == monad
-    # method form
+
     assert monad.bind(unit) == monad
 
-    # associativity
+    r"""
+    associativity
+    
+        (m >>= f) >>= g = m >>= (\x -> f x >>= g)
+    """
 
     assert bind(bind(monad, f), g) == bind(monad, lambda x: bind(f(x), g))
-    # method syntax
+
     assert monad.bind(f).bind(g) == monad.bind(lambda x: bind(f(x), g))
 
 
-@settings(report_multiple_bugs=False)
 @given(
     monad=monads(),
     integer=st.integers(),
@@ -200,39 +276,34 @@ def test_bind(
     v=infer,
     w=infer,
 )
-def test_app(
-    monad,
-    integer,
-    f: RegularFunction,
-    g: RegularFunction,
-    u: RegularFunction,
-    v: RegularFunction,
-    w: RegularFunction,
+def test_applicative_laws(
+    monad: Monad,
+    integer: int,
+    f: UnaryOrBinaryFunction,
+    g: UnaryOrBinaryFunction,
+    u: UnaryOrBinaryFunction,
+    v: UnaryOrBinaryFunction,
+    w: UnaryOrBinaryFunction,
 ):
     """
-    identity
+    pure id <*> v = v
+    pure f <*> pure x = pure (f x)
+    u <*> pure y = pure ($ y) <*> u
+    pure (.) <*> u <*> v <*> w = u <*> (v <*> w)
 
-        pure id <*> v = v
-
-    homomorphism
-
-        pure f <*> pure x = pure (f x)
-
-    interchange
-
-        u <*> pure y = pure ($ y) <*> u
-
-    composition
-
-        pure (.) <*> u <*> v <*> w = u <*> (v <*> w)
+    oof
     """
 
     f, g, u, v, w = memoize(f), memoize(g), memoize(u), memoize(v), memoize(w)
 
-    # identity
+    """
+    identity
+    
+        pure id <*> v = v
+    """
 
     assert apply(unit(identity), monad) == monad
-    # method syntax
+
     assert unit(identity).apply(monad) == monad
 
     """
@@ -250,13 +321,12 @@ def test_app(
     interchange
 
         u <*> pure y = pure ($ y) <*> u
-    
     """
 
     y = integer
 
     assert apply(unit(f), unit(y)) == apply(unit(lambda g: g(y)), unit(f))
-    # method form
+
     assert unit(f).apply(unit(y)) == unit(lambda g: g(y)).apply(unit(f))
 
     """
@@ -267,10 +337,12 @@ def test_app(
 
     u, v, w = unit(u), unit(v), unit(w)
 
+    assert apply(apply(apply(unit(compose), u), v), w) == apply(u, apply(v, w))
+
     assert unit(compose).apply(u).apply(v).apply(w) == u.apply(v.apply(w))
 
 
-def _memoize_and_monadify(function: RegularFunction):
+def _memoize_and_monadify(function: UnaryFunction):
     """Memoize function and wrap its return value in a monad."""
 
     @memoize
@@ -282,6 +354,10 @@ def _memoize_and_monadify(function: RegularFunction):
 
 
 def memoize(func):
+    """
+    Since functions generated by hypothesis aren't deterministic, this decorator will allow us to make
+    them so.
+    """
     return lru_cache(maxsize=None)(func)
 
 
@@ -289,7 +365,8 @@ def identity(x: Any) -> Any:
     return x
 
 
-def partial_or_composition(f: RegularFunction, g: RegularFunction):
+def partially_apply_or_compose(f: UnaryFunction, g: UnaryFunction) -> Callable:
+    """Determine whether to compose or partial apply functions based on their signature."""
     if len(inspect.signature(f).parameters) > 1:
         # f is probably the composition function
         return partial(f, g)
@@ -297,7 +374,7 @@ def partial_or_composition(f: RegularFunction, g: RegularFunction):
         return compose(f, g)
 
 
-def compose(f, g):
+def compose(f: Callable, g: Callable) -> Callable:
     def f_after_g(x):
         return f(g(x))
 
@@ -305,9 +382,9 @@ def compose(f, g):
 
 
 def test():
-    test_map()
-    test_bind()
-    test_app()
+    test_functor_laws()
+    test_monad_laws()
+    test_applicative_laws()
 
 
 if __name__ == "__main__":
