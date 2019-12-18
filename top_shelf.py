@@ -1,5 +1,4 @@
 import inspect
-import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import partial, lru_cache
@@ -17,20 +16,24 @@ ScalarOrScalarFunction = Union[Scalar, ScalarToScalar]
 RegularFunction = Callable[[ScalarOrScalarFunction], ScalarOrScalarFunction]
 
 
-class Monad(ABC):
+class Functor(ABC):
     @classmethod
     @abstractmethod
-    def unit(cls, value: Any) -> "Monad":
+    def unit(cls, value: Any) -> "Functor":
         raise NotImplementedError
 
     @abstractmethod
-    def map(self, function: RegularFunction) -> "Monad":
+    def map(self, function: RegularFunction) -> "Functor":
         raise NotImplementedError
 
+
+class Applicative(Functor):
     @abstractmethod
-    def apply(self, lifted: "Monad") -> "Monad":
+    def apply(self, lifted: "Applicative") -> "Applicative":
         raise NotImplementedError
 
+
+class Monad(Applicative):
     @abstractmethod
     def bind(self, function: Callable[[Scalar], "Monad"]) -> "Monad":
         raise NotImplementedError
@@ -45,28 +48,28 @@ class Identity(Monad):
     value: Union[Scalar, Callable]
 
     @classmethod
-    def unit(cls, value: Any) -> "Monad":
+    def unit(cls, value: Any) -> "Identity":
         return unit(value, cls)
 
-    def map(self, function: RegularFunction) -> "Monad":
+    def map(self, function: RegularFunction) -> "Identity":
         return map(self, function)
 
-    def apply(self, lifted: "Monad") -> "Monad":
+    def apply(self, lifted: "Identity") -> "Identity":
         return apply(self, lifted)
 
-    def bind(self, function: Callable[[Scalar], "Monad"]) -> "Monad":
+    def bind(self, function: Callable[[Scalar], "Identity"]) -> "Identity":
         return bind(self, function)
 
-    def __eq__(self, other: "Monad"):
-
-        if self.value == other.value:
-            return True
+    def __eq__(self, other: Any):
+        if not isinstance(other, Identity):
+            return False
         elif self.value is other.value:
             return True
+        elif self.value == other.value:
+            return True
         elif callable(self.value) and callable(other.value):
-            # we assume both functions accept integers for simplicity's sake
-            i = random.randrange(0, 100)
-            return self.value(i) == other.value(i)
+            # we assume both functions accept 0 for simplicity's sake
+            return self.value(0) == other.value(0)
         else:
             return False
 
@@ -166,7 +169,7 @@ def test_bind(
     ma >>= λx → unit(x) ↔ ma
     ma >>= λx → (f(x) >>= λy → g(y)) ↔ (ma >>= λx → f(x)) >>= λy → g(y)
     """
-    f, g = _modify(f), _modify(g)
+    f, g = _memoize_and_monadify(f), _memoize_and_monadify(g)
 
     # left identity
 
@@ -188,8 +191,24 @@ def test_bind(
 
 
 @settings(report_multiple_bugs=False)
-@given(monad=monads(), integer=st.integers(), f=infer, g=infer)
-def test_app(monad, integer, f: RegularFunction, g: RegularFunction):
+@given(
+    monad=monads(),
+    integer=st.integers(),
+    f=infer,
+    g=infer,
+    u=infer,
+    v=infer,
+    w=infer,
+)
+def test_app(
+    monad,
+    integer,
+    f: RegularFunction,
+    g: RegularFunction,
+    u: RegularFunction,
+    v: RegularFunction,
+    w: RegularFunction,
+):
     """
     identity
 
@@ -208,7 +227,7 @@ def test_app(monad, integer, f: RegularFunction, g: RegularFunction):
         pure (.) <*> u <*> v <*> w = u <*> (v <*> w)
     """
 
-    f, g = memoize(f), memoize(g)
+    f, g, u, v, w = memoize(f), memoize(g), memoize(u), memoize(v), memoize(w)
 
     # identity
 
@@ -246,15 +265,13 @@ def test_app(monad, integer, f: RegularFunction, g: RegularFunction):
         pure (.) <*> u <*> v <*> w = u <*> (v <*> w)
     """
 
-    u = unit(lambda x: x + 1)
-    v = unit(lambda x: x * 2)
-    w = unit(lambda x: x + 3)
+    u, v, w = unit(u), unit(v), unit(w)
 
     assert unit(compose).apply(u).apply(v).apply(w) == u.apply(v.apply(w))
 
 
-def _modify(function: RegularFunction):
-    """Memoize function and wrap it in a monad."""
+def _memoize_and_monadify(function: RegularFunction):
+    """Memoize function and wrap its return value in a monad."""
 
     @memoize
     def f(x):
@@ -272,9 +289,7 @@ def identity(x: Any) -> Any:
     return x
 
 
-def partial_or_composition(
-    f: RegularFunction, g: Union[Scalar, RegularFunction]
-):
+def partial_or_composition(f: RegularFunction, g: RegularFunction):
     if len(inspect.signature(f).parameters) > 1:
         # f is probably the composition function
         return partial(f, g)
