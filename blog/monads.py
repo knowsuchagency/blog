@@ -44,11 +44,11 @@ class Functor(ABC):
 
 class Applicative(Functor):
     """
-    An applicative is a functor that also has an apply method
+    An applicative is a functor with an apply method
     that follows a set of rules.
 
-    It also has a unit method which will take a normal function or
-    value which it will "lift" into an applicative.
+    Applicatives also a unit method which will take a normal function or
+    value which it will "lift" the value/function into a context/effect.
 
     We can think sort of think of unit as just a glorified __init__
     """
