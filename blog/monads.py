@@ -121,7 +121,7 @@ def unit(
     """
     AKA: return, pure, yield, point
 
-    The purpose of `unit` is to take a value, and wrap it in a monad.
+    The purpose of `unit` is to take a value, and "lift" it into a context.
     """
     return M(value) if not isinstance(value, M) else value
 
