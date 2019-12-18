@@ -91,12 +91,20 @@ def map(monad: Monad, function: RegularFunction) -> Monad:
         return monad.unit(partial_or_composition(function, monad.value))
 
 
-def partial_or_composition(function, wrapped_function):
-    try:
-        return function(wrapped_function)
-    except TypeError:
-        return compose(wrapped_function, function)
+def partial_or_composition(f, g):
+    if f is compose:
+        return partial(compose, g)
 
+    try:
+        return f(g)
+    except TypeError:
+        return compose(f, g)
+
+def compose(f, g):
+    def f_after_g(x):
+        return f(g(x))
+
+    return f_after_g
 
 def apply(lifted_function: Monad, lifted: Monad) -> Monad:
     """AKA: ap, <*>"""
@@ -238,10 +246,11 @@ def test_app(
 
         pure f <*> pure x = pure (f x)
     """
+    x = integer
 
-    assert apply(unit(f), monad) == unit(f(monad.value))
+    assert apply(unit(f), unit(x)) == unit(f(x))
 
-    assert unit(f).apply(monad) == unit(f(monad.value))
+    assert unit(f).apply(unit(x)) == unit(f(x))
 
     """
     interchange
@@ -267,13 +276,12 @@ def test_app(
     # v, w = monad, other_monad
     # v, w = unit(f), unit(g)
 
-    # u = unit(lambda x: x + 1)
-    # v = unit(lambda x: x * 2)
-    # w = unit(lambda x: x + 3)
-    # left = unit(compose).apply(u).apply(v).apply(w)
-    # right = u.apply(v.apply(w))
-    # print(left.value, right.value)
-    # assert left == right, f"{left} != {right}"
+    u = unit(lambda x: x + 1)
+    v = unit(lambda x: x * 2)
+    w = unit(lambda x: x + 3)
+    left = unit(compose).apply(u).apply(v).apply(w)
+    right = u.apply(v.apply(w))
+    assert left == right, f"{left} != {right}"
 
 
 def _modify(function: RegularFunction):
@@ -287,29 +295,11 @@ def _modify(function: RegularFunction):
     return f
 
 
-def compose(f: RegularFunction):
-    """
-    Compose two functions together in curried form.
-    """
-
-    def i(g: RegularFunction):
-        def j(x: Scalar):
-            return f(g(x))
-
-        return j
-
-    return i
-
-
 def memoize(func):
     return lru_cache(maxsize=None)(func)
 
 
-def compose(f, g):
-    def f_after_g(x):
-        return f(g(x))
 
-    return f_after_g
 
 
 def identity(x: Any) -> Any:
