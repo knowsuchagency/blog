@@ -1,3 +1,4 @@
+import inspect
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -11,13 +12,9 @@ Scalar = Union[AnyStr, int, bool]
 
 ScalarToScalar = Callable[[Scalar], Scalar]
 
-IntToInt = Callable[[int], int]
-
 ScalarOrScalarFunction = Union[Scalar, ScalarToScalar]
 
 RegularFunction = Callable[[ScalarOrScalarFunction], ScalarOrScalarFunction]
-
-ScalarToMonad = Callable[[Scalar], "Monad"]
 
 
 class Monad(ABC):
@@ -84,27 +81,22 @@ def unit(
 
 
 def map(monad: Monad, function: RegularFunction) -> Monad:
+    """
+    Given a monad and a function, return a new monad where the function is applied to the monad's value.
 
-    if not callable(monad.value):
-        return monad.unit(function(monad.value))
-    else:
-        return monad.unit(partial_or_composition(function, monad.value))
+    Note, it's normally bad practice to define control flow using exceptions, but due to Python's dynamic
+    nature, we aren't guaranteed to have the necessary type information up-front in order to know whether
+    we need to simply apply the function to the wrapped value, partially apply two functions, or compose them.
 
+    Without type-annotated arguments, we're left to figure out the control flow ourselves through experimentation.
 
-def partial_or_composition(f, g):
-    if f is compose:
-        return partial(compose, g)
+    """
 
     try:
-        return f(g)
+        return monad.unit(function(monad.value))
     except TypeError:
-        return compose(f, g)
+        return monad.unit(partial_or_composition(function, monad.value))
 
-def compose(f, g):
-    def f_after_g(x):
-        return f(g(x))
-
-    return f_after_g
 
 def apply(lifted_function: Monad, lifted: Monad) -> Monad:
     """AKA: ap, <*>"""
@@ -128,10 +120,6 @@ def bind(monad: Monad, function: Callable[[Scalar], Monad]) -> Monad:
 @st.composite
 def monads(draw):
 
-    # scalars = st.one_of(
-    #     st.integers(), st.floats(allow_nan=False), st.text(), st.booleans()
-    # )
-
     scalars = st.integers()
 
     unary_functions = st.functions(like=lambda x: x, returns=scalars)
@@ -143,12 +131,9 @@ def monads(draw):
     return Identity(value)
 
 
-@given(monad=monads(), integer=st.integers(), f=infer, g=infer)
+@given(integer=st.integers(), f=infer, g=infer)
 def test_map(
-    monad: Monad,
-    integer: int,
-    f: Callable[[int, int], int],
-    g: Callable[[int, int], int],
+    integer: int, f: Callable[[int, int], int], g: Callable[[int, int], int]
 ):
     """
     fmap id  ==  id
@@ -203,16 +188,8 @@ def test_bind(
 
 
 @settings(report_multiple_bugs=False)
-@given(
-    monad=monads(),
-    other_monad=monads(),
-    integer=st.integers(),
-    f=infer,
-    g=infer,
-)
-def test_app(
-    monad, other_monad, integer, f: RegularFunction, g: RegularFunction
-):
+@given(monad=monads(), integer=st.integers(), f=infer, g=infer)
+def test_app(monad, integer, f: RegularFunction, g: RegularFunction):
     """
     identity
 
@@ -230,8 +207,6 @@ def test_app(
 
         pure (.) <*> u <*> v <*> w = u <*> (v <*> w)
     """
-
-    # f, g = monad.unit(determinize(f)), monad.unit(determinize(g))
 
     f, g = memoize(f), memoize(g)
 
@@ -266,22 +241,16 @@ def test_app(
     assert unit(f).apply(unit(y)) == unit(lambda g: g(y)).apply(unit(f))
 
     """
-    The final applicative law mimics the second functor law. 
-    It is a composition law. 
-    It states that function composition holds 
-    across applications within the functor
+    composition
 
         pure (.) <*> u <*> v <*> w = u <*> (v <*> w)
     """
-    # v, w = monad, other_monad
-    # v, w = unit(f), unit(g)
 
     u = unit(lambda x: x + 1)
     v = unit(lambda x: x * 2)
     w = unit(lambda x: x + 3)
-    left = unit(compose).apply(u).apply(v).apply(w)
-    right = u.apply(v.apply(w))
-    assert left == right, f"{left} != {right}"
+
+    assert unit(compose).apply(u).apply(v).apply(w) == u.apply(v.apply(w))
 
 
 def _modify(function: RegularFunction):
@@ -299,11 +268,25 @@ def memoize(func):
     return lru_cache(maxsize=None)(func)
 
 
-
-
-
 def identity(x: Any) -> Any:
     return x
+
+
+def partial_or_composition(
+    f: RegularFunction, g: Union[Scalar, RegularFunction]
+):
+    if len(inspect.signature(f).parameters) > 1:
+        # f is probably the composition function
+        return partial(f, g)
+    else:
+        return compose(f, g)
+
+
+def compose(f, g):
+    def f_after_g(x):
+        return f(g(x))
+
+    return f_after_g
 
 
 def test():
