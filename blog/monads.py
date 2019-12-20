@@ -128,6 +128,8 @@ def unit(
 
 def map(monad: Monad, function: UnaryFunction) -> Monad:
     """
+    AKA: map, fmap, lift, Select
+
     Given a monad and a function, return a new monad where the function is applied to the monad's value.
 
     Note, it's normally bad practice to define control flow using exceptions, but due to Python's dynamic
@@ -366,7 +368,7 @@ def identity(x: Any) -> Any:
 
 
 def partially_apply_or_compose(f: UnaryFunction, g: UnaryFunction) -> Callable:
-    """Determine whether to compose or partial apply functions based on their signature."""
+    """If the arity of f is greater than one, return a function with g partially applied to f else compose f and g."""
     if len(inspect.signature(f).parameters) > 1:
         # f is probably the composition function
         return partial(f, g)
