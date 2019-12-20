@@ -367,7 +367,7 @@ def identity(x: Any) -> Any:
     return x
 
 
-def partially_apply_or_compose(f: UnaryFunction, g: UnaryFunction) -> Callable:
+def partially_apply_or_compose(f: UnaryOrBinaryFunction, g: UnaryFunction) -> Callable:
     """If the arity of f is greater than one, return a function with g partially applied to f else compose f and g."""
     if len(inspect.signature(f).parameters) > 1:
         # f is probably the composition function
