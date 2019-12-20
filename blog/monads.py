@@ -26,7 +26,9 @@ ScalarOrFunction = Union[Scalar, Function]
 
 UnaryFunction = Callable[[ScalarOrFunction], ScalarOrFunction]
 
-BinaryFunction = Callable[[ScalarOrFunction, ScalarOrFunction], ScalarOrFunction]
+BinaryFunction = Callable[
+    [ScalarOrFunction, ScalarOrFunction], ScalarOrFunction
+]
 
 UnaryOrBinaryFunction = Union[UnaryFunction, BinaryFunction]
 
@@ -296,7 +298,7 @@ def test_applicative_laws(
     oof
     """
 
-    f, g, u, v, w = memoize(f), memoize(g), memoize(u), memoize(v), memoize(w)
+    f, g, u, v, w = (memoize(func) for func in (f, g, u, v, w))
 
     """
     identity
@@ -367,7 +369,9 @@ def identity(x: Any) -> Any:
     return x
 
 
-def partially_apply_or_compose(f: UnaryOrBinaryFunction, g: UnaryFunction) -> Callable:
+def partially_apply_or_compose(
+    f: UnaryOrBinaryFunction, g: UnaryFunction
+) -> Callable:
     """If the arity of f is greater than one, return a function with g partially applied to f else compose f and g."""
     if len(inspect.signature(f).parameters) > 1:
         # f is probably the composition function
